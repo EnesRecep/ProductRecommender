@@ -13,6 +13,7 @@ import scala.collection.mutable.ArrayBuffer
 import scala.util.control.Breaks._
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.mllib.recommendation.{ALS, MatrixFactorizationModel, Rating}
+import com.github.fommil.netlib._
 
 
 /**
@@ -62,7 +63,7 @@ def readProduct(location:String, spark: SparkSession): RDD[Product] = {
 
 def topRatedProducts(products : RDD[Product], ratings : RDD[Rating],  i: Int): Map[ Int, String] = {
 		// Create mostRatedProducts(productID, Number_of_Product)
-		val mostRatedProducts = ratings.groupBy(_.product).map(f=> (f._1, f._2.size)).takeOrdered(10)(Ordering[Int].reverse.on(_._2))
+		val mostRatedProducts = ratings.groupBy(_.product).map(f=> (f._1, f._2.size)).takeOrdered(100)(Ordering[Int].reverse.on(_._2))
 
 				// Select 100 of the top rated Products
 				val selectedProdcut = shuffle(mostRatedProducts).map(f => (f._2, products.filter(_.prooductID == f._1)
@@ -122,16 +123,27 @@ def main(args: Array[String]) {
 
 						// Ask user to rate 10 top rated product
 						val ourRatings = getRatings(topRatedProduct, spark)
-						
+
 						// Add User Ratings
-            					val editedRatings = ratings.union(ourRatings)
-            
-            					//Normalizing the Ratings
-            					val normalizedRatings = User_Ratings.normalizingRatings(editedRatings)
-            
-            					// Training the model
-             					val model = ALS.train(normalizedRatings, 4, 10 , 0.01)
-						}
+						val editedRatings = ratings.union(ourRatings)
+
+						//Normalizing the Ratings
+						val normalizedRatings = User_Ratings.normalizingRatings(editedRatings)
+
+						// Training the model
+						val model = ALS.train(normalizedRatings, 4, 10 , 0.01)
+
+						// Recommend 10 product
+						val recommendations = model.recommendProducts(0, 10)
+
+						// Print recommended product
+						recommendations.map(f => products.filter(p => p.prooductID == f.product)
+						.take(1)(0).prodcutName)
+						.foreach(println)
+
+
+
+			}
 
 catch{
 case e : Exception => throw e
