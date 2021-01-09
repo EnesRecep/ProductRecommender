@@ -47,17 +47,17 @@ import com.github.fommil.netlib._
  * sourceURLs*/
 object CollabarativeFiltering {
 case class Product(prooductID: Int, prodcutName: String,
-		productCat: String)
+		productCat: Array[String])
 
-def parseProduct(fields: Row): Product = {
-		//4,3,7,6
+def parseProduct(fields: Row): Product = {		
 		Product(fields(4).toString().hashCode(),
 				fields(3).toString(),
-				fields(5).toString())
+				fields(7).toString().split("\\,"))
 
 }
 def readProduct(location:String, spark: SparkSession): RDD[Product] = {
-		val product = spark.read.option("header", "true").csv(location).rdd.map(parseProduct)
+		var input_product = spark.read.option("header", "true").csv(location).rdd.map(parseProduct).distinct().cache()
+				val product = input_product.distinct()
 				return product
 }
 
@@ -101,8 +101,7 @@ def main(args: Array[String]) {
 
 				spark = SparkSession.builder.appName("Spark SQL").config("spark.master", "local[*]").getOrCreate()
 						val sc = spark.sparkContext
-						var csv_file = "Datafiniti_Amazon_Consumer_Reviews_of_Amazon_Products_May19.csv"
-						//var csv_file = "D:\Courses\CENG790 Big Data\Datafiniti_Amazon_Consumer_Reviews_of_Amazon_Products_May19.csv";
+						var csv_file = "Datafiniti_Amazon_Consumer_Reviews_of_Amazon_Products_May19.csv"						
 						val sqlContext = new org.apache.spark.sql.SQLContext(sc)
 						Logger.getLogger("org").setLevel(Level.OFF)
 						Logger.getLogger("akka").setLevel(Level.OFF)
@@ -131,49 +130,84 @@ def main(args: Array[String]) {
 						//Normalizing the Ratings
 						val normalizedRatings = User_Ratings.normalizingRatings(editedRatings)
 
+						//Splitting The Data into Training and Test Data
+						val Array(training_data, test_data) = normalizedRatings.randomSplit(Array(0.8, 0.2))
+						training_data.distinct().cache()
+						test_data.distinct().cache()
+
 						// Training the model
-						val model = ALS.train(normalizedRatings, 4, 10 , 0.01)
+						val model = ALS.train(training_data, 4, 10 , 0.01)
+
+						// Clearing the actual ratings of user's to make our predictions
+						val bareProduct = test_data.map(f => (f.user, f.product))
+
+						// Predicting the user's rating with our trained 
+						val modelPredictions = model.predict(bareProduct).map(p => ((p.user, p.product), p.rating))
+
+						// The Product (user, product) is a key and (actual rating, predicted rating) is pair 
+						val combinedPredictions = test_data.map(f => ((f.user, f.product),f.rating)).join(modelPredictions)
+						println("UserID-----ProductID------ Actual----- Rating ")
+						combinedPredictions.collect().take(10).foreach(println)
 
 						// Recommend 10 product
 						val recommendations = model.recommendProducts(0, 10)
 
 						// Print recommended product
-						
-						
-						
+
 						//var t = recommendations.map(f => f.product == products.filter(p => p.prooductID == f.product).id)
-								
-						
+
+
 						//recommendations.foreach(println)
 
-		var products_df = spark.createDataFrame(products.distinct()).toDF("prooductID", "prodcutName", "productCat")
-    print(products_df)
-    products_df.show()
-		
-		
-		
-  var rdd = spark.sparkContext.parallelize(recommendations)
+						var products_df = spark.createDataFrame(products.distinct()).toDF("prooductID", "prodcutName", "productCat")
+						print(products_df)
+						products_df.show()
 
-  var recommendations_df = spark.createDataFrame(rdd).toDF("user", "product", "rating")
-  print(recommendations_df.schema)
-  recommendations_df.show()
+						var rdd = spark.sparkContext.parallelize(recommendations)
+
+						var recommendations_df = spark.createDataFrame(rdd).toDF("user", "product", "rating")
+						print(recommendations_df.schema)
+						recommendations_df.show()
 
 
-  val joined_df = recommendations_df.join(products_df, col("product") === col("prooductID"), "inner")
-						
-  joined_df.show()
-						
-						 //for( a <- recommendations ){
-						 //  var t = products.filter(f => f.prooductID == a.product).distinct()
-						   
-						 //}
-								
+						val joined_df = recommendations_df.join(products_df, col("product") === col("prooductID"), "inner")
+
+						joined_df.show()
+
+						//for( a <- recommendations ){
+						//  var t = products.filter(f => f.prooductID == a.product).distinct()
+
+						//}
+
 						//var t = recommendations.map(f => products.filter(p => p.prooductID == f.product))
-					
+
 						//.take(1)(0)
 						//.foreach(y => y.collect().foreach(println))
 
+						//Product category with productID
+						val productCat = products.map(p => (p.prooductID, p.productCat))
 
+						//User Average Ratings
+						val avgRatings = ratings.groupBy(r => r.user).map(x => (x._1, x._2.map(c => c.rating/x._2.size).reduce((a,b) => (a+b)), x._2))
+
+						//Flattened AverageRating
+						val avgRatingsFlatened = avgRatings.flatMap(x=> (x._3.filter(y => y.rating >= x._2)))
+
+						// productId and it's rating
+						val ratedProductCat = avgRatingsFlatened.map(rat => (rat.product, rat))
+
+						// Flatten the ratings for each user						
+						val userInterest = ratedProductCat.join(productCat).map(x => (x._2._1.user, x._2._2)).groupByKey()
+
+						// Calculating the UserInterest over the data
+						val userInterestCount = userInterest.map(u => (u._1, u._2.flatMap(interest => interest.map(cat => (cat,1) )  ) ))
+
+						// UserInterest Vector
+						val usersVector = userInterestCount.map(u => (u._1, u._2.groupBy(_._1).map(x=> (x._1, x._2.size) )))
+						val user = usersVector.collectAsMap()(0)
+						println("User's Interest vector")
+						println(user)
+						val similarUsers = User_Similarity.knn(user, 10, usersVector)
 
 			}
 
