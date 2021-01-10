@@ -179,34 +179,42 @@ def main(args: Array[String]) {
 						//Product category with productID
 						val productCat = products.map(p => (p.prooductID, p.productCat))
 						println("\nCategories of 10 Product:")					
-            productCat.map { case (a , arr) => (a, arr.toList) }.collect().take(10).foreach(println)
+            productCat.map { case (a , arr) => (a, arr.toList) }.take(10).foreach(println)
 
 						//User Average Ratings
 						val avgRatings = ratings.groupBy(r => r.user).map(x => (x._1, x._2.map(c => c.rating/x._2.size).reduce((a,b) => (a+b)), x._2))
 						println("\nAverageRating of 10 user:")					
-            avgRatings.map { case (a ,b, arr) => (a, arr.toList) }.collect().take(10).foreach(println)
+            avgRatings.map { case (a ,b, arr) => (a, b, arr.toList) }.take(10).foreach(println)
 						
 						
 						//Flattened AverageRating
 						val avgRatingsFlatened = avgRatings.flatMap(x=> (x._3.filter(y => y.rating >= x._2)))
+						println("\nFlattened Avg Ratings of 10 :")	
+						avgRatingsFlatened.take(10).foreach(println)
 
-						
-						// productId and it's rating
+				
+						// productId and it's rating acording to categorty
 						val ratedProductCat = avgRatingsFlatened.map(rat => (rat.product, rat))
+						println("\n Product Category Rating :")	
+						ratedProductCat.take(10).foreach(println)
 
-						// Flatten the ratings for each user						
+						// Flatten the ratings for each user with category					
 						val userInterest = ratedProductCat.join(productCat).map(x => (x._2._1.user, x._2._2)).groupByKey()
+						println("\n User Interest Combined and Flatened:")			
+						//***************Aşağıdaki ile bastırdım ama istediğim şekilde bastıramadım ve çok uzun sürdü.
+            //userInterest.map { case (a , arr) => (a, arr.toList) }.take(10).foreach(println)
 
 						// Calculating the UserInterest over the data
 						val userInterestCount = userInterest.map(u => (u._1, u._2.flatMap(interest => interest.map(cat => (cat,1) )  ) ))
-
+/*
+ * HATAYI AŞAĞIDAKİ KOD İLE ALIYORUM BURADA collectAsMap İLE BELLEĞE ALDIĞI VERİ BOYUTU AŞIYOR SANIRIM.
 						// UserInterest Vector
 						val usersVector = userInterestCount.map(u => (u._1, u._2.groupBy(_._1).map(x=> (x._1, x._2.size) )))
 						val user = usersVector.collectAsMap()(0)
 						println("User's Interest vector")
 						println(user)
 						val similarUsers = User_Similarity.knn(user, 10, usersVector)
-
+*/
 			}
 
 catch{
