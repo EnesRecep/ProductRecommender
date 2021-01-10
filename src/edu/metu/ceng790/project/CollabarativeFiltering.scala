@@ -74,18 +74,18 @@ def topRatedProducts(products : RDD[Product], ratings : RDD[Rating],  i: Int): M
 
 def getRatings(topRatedProduct: Map[Int, String], spark: SparkSession): RDD[Rating] = {
 		var ourId = 0
-				var ourRatings  = ArrayBuffer.empty[Rating]
-						var i = 1
-						for(product <- topRatedProduct) {
-							breakable {
-								while(true) {
-									try {
-										println(i.toString + ") Your rating for: " + product._2 + "," )
-										val rating = scala.io.StdIn.readInt()
-										if(rating < 5.1 && rating > 0) {
-											ourRatings += Rating(0, product._1, rating)
-													i += 1
-													break
+		var ourRatings  = ArrayBuffer.empty[Rating]
+		var i = 1
+		for(product <- topRatedProduct) {
+				breakable {
+				while(true) {
+				try {
+						println(i.toString + ") Your rating for: " + product._2 + "," )
+						val rating = scala.io.StdIn.readInt()
+						if(rating < 5.1 && rating > 0) {
+							ourRatings += Rating(0, product._1, rating)
+								i += 1
+								break
 										}
 									} catch {
 									case e: Exception => println("Invalid Rating");
@@ -109,7 +109,6 @@ def main(args: Array[String]) {
 						//Loading Products
 						val products = CollabarativeFiltering.readProduct(csv_file, spark)
 						products.cache()
-
 						products.take(10).foreach(println)
 
 						//Loading Ratings
@@ -117,9 +116,8 @@ def main(args: Array[String]) {
 						ratings.take(10).foreach(println)
 
 						//Checking  Top Rated Products
-
-						val topRatedProduct = topRatedProducts(products, ratings, 10)
-						topRatedProduct.take(10).foreach(println)
+						val topRatedProduct = topRatedProducts(products, ratings, 5)
+						topRatedProduct.take(5).foreach(println)
 
 						// Ask user to rate 10 top rated product
 						val ourRatings = getRatings(topRatedProduct, spark)
@@ -146,16 +144,14 @@ def main(args: Array[String]) {
 
 						// The Product (user, product) is a key and (actual rating, predicted rating) is pair 
 						val combinedPredictions = test_data.map(f => ((f.user, f.product),f.rating)).join(modelPredictions)
-						println("UserID-----ProductID------ Actual----- Rating ")
+						println("UserID---ProductID---Rating---Predicted_Rating ")
 						combinedPredictions.collect().take(10).foreach(println)
 
 						// Recommend 10 product
 						val recommendations = model.recommendProducts(0, 10)
 
-						// Print recommended product
-
-						//var t = recommendations.map(f => f.product == products.filter(p => p.prooductID == f.product).id)
-
+						/*Print recommended product
+						var t = recommendations.map(f => f.product == products.filter(p => p.prooductID == f.product).id)*/
 
 						//recommendations.foreach(println)
 
@@ -171,28 +167,30 @@ def main(args: Array[String]) {
 
 
 						val joined_df = recommendations_df.join(products_df, col("product") === col("prooductID"), "inner")
-
 						joined_df.show()
 
-						//for( a <- recommendations ){
-						//  var t = products.filter(f => f.prooductID == a.product).distinct()
-
-						//}
-
-						//var t = recommendations.map(f => products.filter(p => p.prooductID == f.product))
-
-						//.take(1)(0)
-						//.foreach(y => y.collect().foreach(println))
+						/*for( a <- recommendations ){
+						var t = products.filter(f => f.prooductID == a.product).distinct()
+						}
+						var t = recommendations.map(f => products.filter(p => p.prooductID == f.product))
+						.take(1)(0)
+						.foreach(y => y.collect().foreach(println))*/
 
 						//Product category with productID
 						val productCat = products.map(p => (p.prooductID, p.productCat))
+						println("\nCategories of 10 Product:")					
+            productCat.map { case (a , arr) => (a, arr.toList) }.collect().take(10).foreach(println)
 
 						//User Average Ratings
 						val avgRatings = ratings.groupBy(r => r.user).map(x => (x._1, x._2.map(c => c.rating/x._2.size).reduce((a,b) => (a+b)), x._2))
-
+						println("\nAverageRating of 10 user:")					
+            avgRatings.map { case (a ,b, arr) => (a, arr.toList) }.collect().take(10).foreach(println)
+						
+						
 						//Flattened AverageRating
 						val avgRatingsFlatened = avgRatings.flatMap(x=> (x._3.filter(y => y.rating >= x._2)))
 
+						
 						// productId and it's rating
 						val ratedProductCat = avgRatingsFlatened.map(rat => (rat.product, rat))
 
